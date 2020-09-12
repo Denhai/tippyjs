@@ -116,6 +116,7 @@ export interface DefaultProps extends Omit<Props, 'delay' | 'duration'> {
 
 export interface Instance<TProps = Props> {
   clearDelayTimeouts(): void;
+  clearInteractiveTimeout(): void;
   destroy(): void;
   disable(): void;
   enable(): void;

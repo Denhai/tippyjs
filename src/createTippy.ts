@@ -24,7 +24,6 @@ import {
 import {ListenerObject, PopperTreeData, PopperChildren} from './types-internal';
 import {
   arrayFrom,
-  debounce,
   getValueAtIndexOrReturn,
   invokeWithArgsOrReturn,
   normalizeToArray,
@@ -64,7 +63,7 @@ export default function createTippy(
   let currentTransitionEndListener: (event: TransitionEvent) => void;
   let onFirstUpdate: () => void;
   let listeners: ListenerObject[] = [];
-  let debouncedOnMouseMove = debounce(onMouseMove, props.interactiveDebounce);
+  let interactiveTimeout: any;
   let currentTarget: Element;
   const doc = getOwnerDocument(props.triggerTarget || reference);
 
@@ -99,6 +98,7 @@ export default function createTippy(
     plugins,
     // methods
     clearDelayTimeouts,
+    clearInteractiveTimeout,
     setProps,
     setContent,
     show,
@@ -151,6 +151,7 @@ export default function createTippy(
   popper.addEventListener('mouseenter', () => {
     if (instance.props.interactive && instance.state.isVisible) {
       instance.clearDelayTimeouts();
+      instance.clearInteractiveTimeout();
     }
   });
 
@@ -159,8 +160,7 @@ export default function createTippy(
       instance.props.interactive &&
       instance.props.trigger.indexOf('mouseenter') >= 0
     ) {
-      doc.addEventListener('mousemove', debouncedOnMouseMove);
-      debouncedOnMouseMove(event);
+      hideWithInteractivity(event);
     }
   });
 
@@ -282,9 +282,9 @@ export default function createTippy(
   }
 
   function cleanupInteractiveMouseListeners(): void {
-    doc.removeEventListener('mousemove', debouncedOnMouseMove);
+    doc.removeEventListener('mousemove', onMouseMove);
     mouseMoveListeners = mouseMoveListeners.filter(
-      (listener) => listener !== debouncedOnMouseMove
+      (listener) => listener !== onMouseMove
     );
   }
 
@@ -322,6 +322,7 @@ export default function createTippy(
 
     if (instance.props.hideOnClick === true) {
       instance.clearDelayTimeouts();
+      instance.clearInteractiveTimeout();
       instance.hide();
 
       // `mousedown` event is fired right before `focus` if pressing the
@@ -501,6 +502,7 @@ export default function createTippy(
       getCurrentTarget().contains(target) || popper.contains(target);
 
     if (event.type === 'mousemove' && isCursorOverReferenceOrPopper) {
+      clearInteractiveTimeout();
       return;
     }
 
@@ -523,8 +525,19 @@ export default function createTippy(
       .filter(Boolean) as PopperTreeData[];
 
     if (isCursorOutsideInteractiveBorder(popperTreeData, event)) {
-      cleanupInteractiveMouseListeners();
-      scheduleHide(event);
+      console.log('outside border');
+      if (!interactiveTimeout) {
+        interactiveTimeout = setTimeout(() => {
+          cleanupInteractiveMouseListeners();
+          scheduleHide(event);
+          interactiveTimeout = undefined;
+        }, props.interactiveDebounce);
+      }
+      // cleanupInteractiveMouseListeners();
+      // scheduleHide(event);
+    } else {
+      console.log('inside border');
+      clearInteractiveTimeout();
     }
   }
 
@@ -831,6 +844,11 @@ export default function createTippy(
     cancelAnimationFrame(scheduleHideAnimationFrame);
   }
 
+  function clearInteractiveTimeout(): void {
+    clearTimeout(interactiveTimeout);
+    interactiveTimeout = undefined;
+  }
+
   function setProps(partialProps: Partial<Props>): void {
     /* istanbul ignore else */
     if (__DEV__) {
@@ -858,10 +876,6 @@ export default function createTippy(
 
     if (prevProps.interactiveDebounce !== nextProps.interactiveDebounce) {
       cleanupInteractiveMouseListeners();
-      debouncedOnMouseMove = debounce(
-        onMouseMove,
-        nextProps.interactiveDebounce
-      );
     }
 
     // Ensure stale aria-expanded attributes are removed
@@ -1065,9 +1079,8 @@ export default function createTippy(
       );
     }
 
-    doc.addEventListener('mousemove', debouncedOnMouseMove);
-    pushIfUnique(mouseMoveListeners, debouncedOnMouseMove);
-    debouncedOnMouseMove(event);
+    doc.addEventListener('mousemove', onMouseMove);
+    pushIfUnique(mouseMoveListeners, onMouseMove);
   }
 
   function unmount(): void {
@@ -1114,6 +1127,7 @@ export default function createTippy(
     }
 
     instance.clearDelayTimeouts();
+    instance.clearInteractiveTimeout();
     instance.unmount();
 
     removeListeners();

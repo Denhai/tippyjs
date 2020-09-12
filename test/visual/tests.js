@@ -52,7 +52,9 @@ tests.default = () => {
     content: 'hello',
     arrow: content,
     interactive: true,
-    trigger: 'click focus',
+    interactiveDebounce: 0,
+    // interactiveBorder: 100,
+    // trigger: 'click focus',
   });
 
   return instance.destroy;
